@@ -36,7 +36,7 @@ public class ANRSupervisor
 		{
 			// Check for misbehaving SDKs on the main thread.
 			ANRSupervisor.Log("Creating Main Thread Supervisor");
-			instance = new ANRSupervisor(Looper.getMainLooper(), 1, 5);
+			instance = new ANRSupervisor(Looper.getMainLooper(), 2, 5);
 		}
 
 		// Why bother? // Check for misbehaving Script code on the Unity thread.
