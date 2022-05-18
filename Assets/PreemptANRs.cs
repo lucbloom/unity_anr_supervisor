@@ -25,6 +25,8 @@ class Game
             SGDebug.LogR(LogTag.System, $"Reporting ANR throught PlayFab: {obj}");
             PlayFabManager.Instance.ExeCloudScript("reportANR", new Dictionary<string, object> {
                 {"report", obj ?? anrReport},
+            }, res => {
+                ANRSupervisor.CallStatic("reportSent");
             });
         }
 #endif // UNITY_ANDROID
