@@ -80,6 +80,15 @@ public class ANRSupervisor
 		}
 		return null;
 	}
+	
+	public static void reportSent()
+	{
+		if (instance != null &&
+			instance.mSupervisorRunnable != null)
+		{
+			instance.mSupervisorRunnable.mReportSent = true;
+		}
+	}
 
 	public static synchronized void generateANROnMainThreadTEST()
 	{
@@ -129,6 +138,7 @@ class ANRSupervisorRunnable implements Runnable
 	private int mTimeoutCheck;
 	private int mCheckInterval;
 	
+	public boolean mReportSent;
 	public String mReport;
 
 	public ANRSupervisorRunnable(Looper looper, int timeoutCheckDuration, int checkInterval)
@@ -174,14 +184,16 @@ class ANRSupervisorRunnable implements Runnable
 						//FirebaseCrash.report(e);
 						FirebaseCrashlytics.getInstance().log(report);
 						
+						mReportSent = false;
 						mReport = report;
 
-						// Go into waiting mode until the thread responds.
-						//callback.wait();
+						ANRSupervisor.Log("Waiting a maximum of 5 seconds to send the log...");
+						for (int i = 0; i < 5000/100 && !mReportSent; ++i) { Thread.sleep(100); }
 
-						ANRSupervisor.Log("Waiting another 4 seconds for the report to come through...");
-						callback.wait(4000);
+						//ANRSupervisor.Log("Waiting another 4 seconds for the report to come through...");
+						//callback.wait(4000);
 
+						// Checking for false-positive
 						if (!callback.isCalled())
 						{
 							ANRSupervisor.Log("Killing myself");
@@ -189,7 +201,7 @@ class ANRSupervisorRunnable implements Runnable
 							android.os.Process.killProcess(android.os.Process.myPid());
 
 							ANRSupervisor.Log("Exiting the app");
-							System.exit(1);
+							System.exit(0); // SNAFU
 						}
 					}
 					else
@@ -235,42 +247,44 @@ class ANRSupervisorRunnable implements Runnable
 		}
 		catch (Exception e) {}
 
-		ps.print(String.format(l, "{\"title\":\"ANR Report\",\"version\":\"%s\",\"device\":\"%s\",\"name\":\"%s\",\"callstacks\":[",
+		ps.print(String.format(l, "{\"title\":\"ANR Report\",\"build_version\":\"%s\",\"device\":\"%s\",\"name\":\"%s\",\"callstacks\":[",
 			String.valueOf(BuildConfig.VERSION_NAME), android.os.Build.FINGERPRINT, deviceName));
 
-		Object[] objs = stackTraces.keySet().toArray();
-		Thread[] threads = new Thread[objs.length];
-		for (int j = 0; j < objs.length; ++j) { threads[j] = (Thread)objs[j]; }
-		Arrays.sort(threads, Comparator.comparing(Thread::getState));
-
-		for (int t = 0; t < threads.length; ++t)
+		boolean isFirstThread = true;
+		for (Thread thread : stackTraces.keySet())
 		{
-			Thread thread = threads[t];
-			ps.print(String.format(l, "{\"name\":\"%s\",\"state\":\"%s\"", thread.getName(), thread.getState()));
-			
-			if (thread == supervisedThread)
+			if (thread == supervisedThread ||
+				thread.getName().equals("main") ||
+				thread.getName().equals("UnityMain") ||
+				thread.getState().equals("BLOCKED"))
 			{
-				ps.print(",\"supervised\":true");
-			}
-
-			StackTraceElement[] stack = stackTraces.get(thread);
-			if (stack.length > 0)
-			{
-				ps.print(",\"stack\":[");
-				for (int i = 0; i < stack.length; ++i)
+				if (isFirstThread) { isFirstThread = false; } else { ps.print(","); }
+				ps.print(String.format(l, "{\"name\":\"%s\",\"state\":\"%s\"", thread.getName(), thread.getState()));
+				
+				if (thread == supervisedThread)
 				{
-					StackTraceElement element = stack[i];
-					ps.print(String.format(l, "{\"func\":\"%s.%s\",\"file\":\"%s\",\"line\":%d}",
-							element.getClassName(),
-							element.getMethodName(),
-							element.getFileName(), 
-							element.getLineNumber()));
-					if (i < stack.length-1) { ps.print(","); }
+					ps.print(",\"supervised\":true");
 				}
-				ps.print("]");
+
+				StackTraceElement[] stack = stackTraces.get(thread);
+				if (stack.length > 0)
+				{
+					ps.print(",\"stack\":[");
+					boolean isFirstLine = true;
+					for (int i = 0; i < stack.length; ++i)
+					{
+						if (isFirstLine) { isFirstLine = false; } else { ps.print(","); }
+						StackTraceElement element = stack[i];
+						ps.print(String.format(l, "{\"func\":\"%s.%s\",\"file\":\"%s\",\"line\":%d}",
+								element.getClassName(),
+								element.getMethodName(),
+								element.getFileName(), 
+								element.getLineNumber()));
+					}
+					ps.print("]");
+				}
+				ps.print("}");
 			}
-			ps.print("}");
-			if (t < threads.length-1) { ps.print(","); }
 		}
 		ps.print("]}");
 
