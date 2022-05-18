@@ -137,6 +137,8 @@ class ANRSupervisorRunnable implements Runnable
 
 	private int mTimeoutCheck;
 	private int mCheckInterval;
+	private int mFalsePositiveCheckDelay = 1;
+	private int mMaxReportSendWaitDuration = 5;
 	
 	public boolean mReportSent;
 	public String mReport;
@@ -187,13 +189,20 @@ class ANRSupervisorRunnable implements Runnable
 						mReportSent = false;
 						mReport = report;
 
-						ANRSupervisor.Log("Waiting a maximum of 5 seconds to send the log...");
-						for (int i = 0; i < 5000/100 && !mReportSent; ++i) { Thread.sleep(100); }
+						ANRSupervisor.Log("Waiting a maximum of " + mMaxReportSendWaitDuration + " seconds to send the log...");
+						for (int timePassed = 0; timePassed < mMaxReportSendWaitDuration * 1000; timePassed += 100)
+						{
+							if (mReportSent && timePassed >= mFalsePositiveCheckDelay * 1000)
+							{
+								break;
+							}
+							Thread.sleep(100);
+						}
 
 						//ANRSupervisor.Log("Waiting another 4 seconds for the report to come through...");
 						//callback.wait(4000);
 
-						// Checking for false-positive
+						ANRSupervisor.Log("Checking for false-positive");
 						if (!callback.isCalled())
 						{
 							ANRSupervisor.Log("Killing myself");
