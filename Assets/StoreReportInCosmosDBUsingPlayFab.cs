@@ -1,4 +1,4 @@
-namespace StoryGiant
+namespace Mibbon
 {
 	public class CosmosDBTableEntry
 	{
